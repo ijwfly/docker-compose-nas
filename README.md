@@ -2,7 +2,7 @@
 
 After searching for the perfect NAS solution, I realized what I wanted could be achieved
 with some Docker containers on a vanilla Linux box. The result is an opinionated Docker Compose configuration capable of
-browsing indexers to retrieve media resources and downloading them through a WireGuard VPN with port forwarding.
+browsing indexers to retrieve media resources and downloading them.
 SSL certificates and remote access through Tailscale are supported.
 
 Requirements: Any Docker-capable recent Linux box with Docker Engine and Docker Compose V2.
@@ -19,7 +19,6 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
   - [Applications](#applications)
   - [Quick Start](#quick-start)
   - [Environment Variables](#environment-variables)
-  - [PIA WireGuard VPN](#pia-wireguard-vpn)
   - [Sonarr, Radarr & Lidarr](#sonarr-radarr--lidarr)
     - [File Structure](#file-structure)
     - [Download Client](#download-client)
@@ -46,10 +45,8 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
     - [Immich](#immich)
     - [Vaultwarden](#vaultwarden)
   - [Customization](#customization)
-    - [Optional: Using the VPN for \*arr apps](#optional-using-the-vpn-for-arr-apps)
   - [Synology Quirks](#synology-quirks)
     - [Free Ports 80 and 443](#free-ports-80-and-443)
-    - [Install Synology WireGuard](#install-synology-wireguard)
     - [Free Port 1900](#free-port-1900)
     - [User Permissions](#user-permissions)
     - [Synology DHCP Server and Adguard Home Port Conflict](#synology-dhcp-server-and-adguard-home-port-conflict)
@@ -67,8 +64,7 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
 | [Radarr](https://radarr.video)                                     | Movie collection manager for Usenet and BitTorrent users                                                                                                      | [linuxserver/radarr](https://hub.docker.com/r/linuxserver/radarr)                        | /radarr                |
 | [Bazarr](https://www.bazarr.media/)                                | Companion application to Sonarr and Radarr that manages and downloads subtitles                                                                               | [linuxserver/bazarr](https://hub.docker.com/r/linuxserver/bazarr)                        | /bazarr                |
 | [Prowlarr](https://github.com/Prowlarr/Prowlarr)                   | Indexer aggregator for Sonarr and Radarr                                                                                                                      | [linuxserver/prowlarr:latest](https://hub.docker.com/r/linuxserver/prowlarr)             | /prowlarr              |
-| [PIA WireGuard VPN](https://github.com/thrnz/docker-wireguard-pia) | Encapsulate qBittorrent traffic in [PIA](https://www.privateinternetaccess.com/) using [WireGuard](https://www.wireguard.com/) with port forwarding.          | [thrnz/docker-wireguard-pia](https://hub.docker.com/r/thrnz/docker-wireguard-pia)        |                        |
-| [qBittorrent](https://www.qbittorrent.org)                         | Bittorrent client with a complete web UI<br/>Uses VPN network<br/>Using Libtorrent 1.x                                                                        | [linuxserver/qbittorrent:libtorrentv1](https://hub.docker.com/r/linuxserver/qbittorrent) | /qbittorrent           |
+| [qBittorrent](https://www.qbittorrent.org)                         | Bittorrent client with a complete web UI<br/>Using Libtorrent 1.x                                                                                             | [linuxserver/qbittorrent:libtorrentv1](https://hub.docker.com/r/linuxserver/qbittorrent) | /qbittorrent           |
 | [Unpackerr](https://unpackerr.zip)                                 | Automated Archive Extractions                                                                                                                                 | [golift/unpackerr](https://hub.docker.com/r/golift/unpackerr)                            |                        |
 | [Jellyfin](https://jellyfin.org)                                   | Media server designed to organize, manage, and share digital media files to networked devices                                                                 | [linuxserver/jellyfin](https://hub.docker.com/r/linuxserver/jellyfin)                    | /jellyfin              |
 | [Jellyseer](https://seerr.dev/)                                    | Manages requests for your media library                                                                                                                       | [fallenbagel/jellyseerr](https://hub.docker.com/r/fallenbagel/jellyseerr)                | `$JELLYSEERR_HOSTNAME` |
@@ -114,10 +110,6 @@ If you want to show Jellyfin information in the homepage, create it in Jellyfin 
 | `CONFIG_ROOT`                  | Host location for configuration files                                                                                                                                                                  | `.`                                              |
 | `DATA_ROOT`                    | Host location of the data files                                                                                                                                                                        | `/mnt/data`                                      |
 | `DOWNLOAD_ROOT`                | Host download location for qBittorrent, should be a subfolder of `DATA_ROOT`                                                                                                                           | `/mnt/data/torrents`                             |
-| `PIA_LOCATION`                 | Servers to use for PIA. [see list here](https://serverlist.piaservers.net/vpninfo/servers/v6)                                                                                                          | `ca` (Montreal, Canada)                          |
-| `PIA_USER`                     | PIA username                                                                                                                                                                                           |                                                  |
-| `PIA_PASS`                     | PIA password                                                                                                                                                                                           |                                                  |
-| `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `HOSTNAME`                     | Hostname of the NAS, could be a local IP or a domain name                                                                                                                                              | `localhost`                                      |
 | `BASE_HOSTNAME`                | Base hostname of the NAS, useful if hostname is a subdomain                                                                                                                                            | `localhost`                                      |
 | `ADGUARD_HOSTNAME`             | Optional - AdGuard Home hostname used, if enabled                                                                                                                                                      |                                                  |
@@ -152,23 +144,6 @@ If you want to show Jellyfin information in the homepage, create it in Jellyfin 
 | `CALIBRE_PASSWORD`             | Optional - Calibre-Web password to show details in the homepage, if enabled                                                                                                                            | `admin123`                                       |
 | `JELLYSEERR_HOSTNAME`          | Jellyseerr hostname used                                                                                                                                                                               |                                                  |
 
-## PIA WireGuard VPN
-
-I chose PIA since it supports WireGuard and [port forwarding](https://github.com/thrnz/docker-wireguard-pia/issues/26#issuecomment-868165281),
-but you could use other providers:
-
-- OpenVPN: [linuxserver/openvpn-as](https://hub.docker.com/r/linuxserver/openvpn-as)
-- WireGuard: [linuxserver/wireguard](https://hub.docker.com/r/linuxserver/wireguard)
-- NordVPN + OpenVPN: [bubuntux/nordvpn](https://hub.docker.com/r/bubuntux/nordvpn/dockerfile)
-- NordVPN + WireGuard (NordLynx): [bubuntux/nordlynx](https://hub.docker.com/r/bubuntux/nordlynx)
-
-For PIA + WireGuard, fill `.env` and fill it with your PIA credentials.
-
-The location of the server it will connect to is set by `LOC=ca`, defaulting to Montreal - Canada.
-
-You need to fill the credentials in the `PIA_*` environment variable,
-otherwise the VPN container will exit and qBittorrent will not start.
-
 ## Sonarr, Radarr & Lidarr
 
 ### File Structure
@@ -199,8 +174,7 @@ In Lidarr, set the Root folder to `/data/media/music`.
 
 ### Download Client
 
-Then qBittorrent can be configured at Settings > Download Clients. Because all the networking for qBittorrent takes
-place in the VPN container, the hostname for qBittorrent is the hostname of the VPN container, ie `vpn`, and the port is `8080`:
+Then qBittorrent can be configured at Settings > Download Clients. The hostname for qBittorrent is `qbittorrent`, and the port is `8080`.
 
 ## Prowlarr
 
@@ -232,7 +206,7 @@ The login page can be disabled on for the local network in by enabling `Bypass a
 172.17.0.0/16
 ```
 
-Set the default save path to `/data/torrents` in Settings, and restrict the network interface to WireGuard (`wg0`).
+Set the default save path to `/data/torrents` in Settings.
 
 To use the VueTorrent WebUI just go to `qBittorrent`, `Options`, `Web UI`, `Use Alternative WebUI`, and enter `/vuetorrent`. Special thanks to gabe565 for the easy enablement with (https://github.com/gabe565/linuxserver-mod-vuetorrent).
 
@@ -370,7 +344,7 @@ module.exports = {
   ],
   sonarr: ["http://sonarr:8989/sonarr?apikey=<api_key>"],
   radarr: ["http://radarr:7878/radarr?apikey=<api_key>"],
-  torrentClients: ["qbittorrent:http://admin:adminadmin@vpn:8080"],
+  torrentClients: ["qbittorrent:http://admin:adminadmin@qbittorrent:8080"],
   linkDirs: ["/data/torrents"],
   ...
 }
@@ -473,39 +447,6 @@ then appending it to the `COMPOSE_FILE` environment variable: `COMPOSE_FILE=dock
 
 [See official documentation](https://docs.docker.com/compose/extends).
 
-For example, use a [different VPN provider](https://github.com/bubuntux/nordvpn):
-
-```yml
-services:
-  vpn:
-    image: ghcr.io/bubuntux/nordvpn
-    cap_add:
-      - NET_ADMIN # Required
-      - NET_RAW # Required
-    environment: # Review https://github.com/bubuntux/nordvpn#environment-variables
-      - USER=user@email.com # Required
-      - "PASS=pas$word" # Required
-      - CONNECT=United_States
-      - TECHNOLOGY=NordLynx
-      - NETWORK=192.168.1.0/24 # So it can be accessed within the local network
-```
-
-### Optional: Using the VPN for \*arr apps
-
-If you want to use the VPN for Prowlarr and other \*arr applications, add the following block to all the desired containers:
-
-```yml
-network_mode: "service:vpn"
-depends_on:
-  vpn:
-    condition: service_healthy
-```
-
-Change the healthcheck to mark the containers as unhealthy when internet connection is not working by appending a URL
-to the healthcheck, eg: `test: [ "CMD", "curl", "--fail", "http://127.0.0.1:7878/radarr/ping", "https://google.com" ]`
-
-Then in Prowlarr, use `localhost` rather than `vpn` as the hostname, since they are on the same network.
-
 ## Synology Quirks
 
 Docker compose NAS can run on DSM 7.1, with a few extra steps.
@@ -521,16 +462,6 @@ sed -i -e 's/80/81/' -e 's/443/444/' /usr/syno/share/nginx/server.mustache /usr/
 
 synosystemctl restart nginx
 ```
-
-### Install Synology WireGuard
-
-Since WireGuard is not part of DSM's kernel, an external package must be installed for the `vpn` container to run.
-
-For DSM 7.1, download and install the package corresponding to your NAS CPU architecture
-[from here](https://github.com/vegardit/synology-wireguard/releases).
-
-As specified in the [project's README](https://github.com/vegardit/synology-wireguard#installation),
-the package must be run as `root` from the command line: `sudo /var/packages/WireGuard/scripts/start`
 
 ### Free Port 1900
 
