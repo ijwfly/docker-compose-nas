@@ -117,13 +117,8 @@ If you want to show Jellyfin information in the homepage, create it in Jellyfin 
 | `ADGUARD_PASSWORD`             | Optional - AdGuard Home password to show details in the homepage, if enabled                                                                                                                           |                                                  |
 | `QBITTORRENT_USERNAME`         | qBittorrent username to access the web UI                                                                                                                                                              | `admin`                                          |
 | `QBITTORRENT_PASSWORD`         | qBittorrent password to access the web UI                                                                                                                                                              | `adminadmin`                                     |
-| `DNS_CHALLENGE`                | Enable/Disable DNS01 challenge, set to `false` to disable.                                                                                                                                             | `true`                                           |
-| `DNS_CHALLENGE_PROVIDER`       | Provider for DNS01 challenge, [see list here](https://doc.traefik.io/traefik/https/acme/#providers).                                                                                                   | `cloudflare`                                     |
 | `LETS_ENCRYPT_CA_SERVER`       | Let's Encrypt CA Server used to generate certificates, set to production by default.<br/>Set to `https://acme-staging-v02.api.letsencrypt.org/directory` to test your changes with the staging server. | `https://acme-v02.api.letsencrypt.org/directory` |
 | `LETS_ENCRYPT_EMAIL`           | E-mail address used to send expiration notifications                                                                                                                                                   |                                                  |
-| `CLOUDFLARE_EMAIL`             | CloudFlare Account email                                                                                                                                                                               |                                                  |
-| `CLOUDFLARE_DNS_API_TOKEN`     | API token with `DNS:Edit` permission                                                                                                                                                                   |                                                  |
-| `CLOUDFLARE_ZONE_API_TOKEN`    | API token with `Zone:Read` permission                                                                                                                                                                  |                                                  |
 | `SONARR_API_KEY`               | Sonarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `RADARR_API_KEY`               | Radarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `LIDARR_API_KEY`               | Lidarr API key to show information in the homepage                                                                                                                                                     |                                                  |
@@ -263,19 +258,17 @@ Traefik makes this trivial by using Let's Encrypt and one of its
 
 Let's assume we are using `nas.domain.com` as custom subdomain.
 
-The idea is to create an A record pointing to the private IP of the NAS, `192.168.0.10` for example:
+### HTTP Challenge (Default)
+
+The default configuration uses HTTP Challenge, which requires your server to be accessible from the internet on port 80.
+
+Create an A record pointing to your public IP:
 
 ```
-nas.domain.com.	1	IN	A	192.168.0.10
+nas.domain.com.	1	IN	A	YOUR_PUBLIC_IP
 ```
 
-The record will be publicly exposed but not resolve given this is a private IP.
-
-Given the NAS is not accessible from the internet, we need to do a dnsChallenge.
-Here we will be using CloudFlare, but the mechanism will be the same for all DNS providers
-baring environment variable changes, see the Traefik documentation above and [Lego's documentation](https://go-acme.github.io/lego/dns).
-
-Then, fill the CloudFlare `.env` entries.
+Make sure ports 80 and 443 are forwarded to your NAS in your router settings.
 
 If you want to test your configuration first, use the Let's Encrypt staging server by updating `LETS_ENCRYPT_CA_SERVER`'s
 value in `.env`:
@@ -287,11 +280,35 @@ LETS_ENCRYPT_CA_SERVER=https://acme-staging-v02.api.letsencrypt.org/directory
 If it worked, you will see the staging certificate at https://nas.domain.com.
 You may remove the `./letsencrypt/acme.json` file and restart the services to issue the real certificate.
 
-You are free to use any DNS01 provider. Simply replace `DNS_CHALLENGE_PROVIDER` with your own provider,
-[see complete list here](https://doc.traefik.io/traefik/https/acme/#providers).
-You will also need to inject the environments variables specific to your provider.
+### DNS Challenge (Alternative)
 
-Certificate generation can be disabled by setting `DNS_CHALLENGE` to `false`.
+If your NAS is not accessible from the internet, you can use DNS Challenge instead.
+This requires a supported DNS provider like CloudFlare, AWS Route53, etc.
+
+To enable DNS Challenge:
+
+1. Update `docker-compose.yml` to use DNS challenge instead of HTTP challenge:
+   ```yaml
+   - --certificatesresolvers.myresolver.acme.dnschallenge=true
+   - --certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare
+   - --certificatesresolvers.myresolver.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+   ```
+
+2. Add provider-specific environment variables (example for CloudFlare):
+   ```yaml
+   environment:
+     - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
+     - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
+     - CLOUDFLARE_ZONE_API_TOKEN=${CLOUDFLARE_ZONE_API_TOKEN}
+   ```
+
+3. Create an A record pointing to your private IP:
+   ```
+   nas.domain.com.	1	IN	A	192.168.0.10
+   ```
+
+See the [complete list of DNS providers](https://doc.traefik.io/traefik/https/acme/#providers) and 
+[Lego's documentation](https://go-acme.github.io/lego/dns) for provider-specific configuration.
 
 ### Accessing from the outside with Tailscale
 
